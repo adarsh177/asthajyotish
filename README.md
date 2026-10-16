@@ -2,6 +2,10 @@
 
 ![Built with the help of REA](https://img.shields.io/badge/built%20with%20the%20help%20of-REA-3949ab)
 
+**Preview:** [AsthaJyotish.app](https://asthajyotish.app)
+
+To keep the legacy on a dedicated domain, I bought AsthaJyotish.app.
+
 This is a horoscope web app built from a program that lived on a Windows machine long before web apps were cool. The calculations are new. The name, and the reason for doing it, are older. Built with the help of [REA](https://github.com/morluto/rea).
 
 ## Why the name is Astha Jyotish
