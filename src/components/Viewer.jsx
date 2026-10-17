@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppBar,
   Box,
@@ -20,76 +20,66 @@ import { useTheme } from '@mui/material/styles';
 import { t } from '../i18n.js';
 import LanguageToggle from './LanguageToggle.jsx';
 
-const MM = 96 / 25.4;
-const PRINT_WIDTH = 190 * MM;
-const PRINT_HEIGHT = 277 * MM;
-
-function fitSheets() {
-  const sheets = [...document.querySelectorAll('.sheet')];
-  sheets.forEach((sheet) => {
-    sheet.style.display = 'block';
-    sheet.style.boxSizing = 'border-box';
-    sheet.style.width = `${PRINT_WIDTH}px`;
-    sheet.style.maxWidth = `${PRINT_WIDTH}px`;
-    sheet.style.margin = '0';
-    sheet.style.padding = '0';
-    sheet.style.zoom = '1';
-    sheet.style.height = 'auto';
-    sheet.style.maxHeight = 'none';
-    sheet.style.overflow = 'visible';
-  });
-  sheets.forEach((sheet) => {
-    const needed = Math.max(sheet.scrollHeight, 1);
-    const scale = Math.min(1, (PRINT_HEIGHT - 4) / needed);
-    sheet.style.zoom = String(scale);
-    sheet.style.height = `${Math.floor((PRINT_HEIGHT - 4) / scale)}px`;
-    sheet.style.overflow = 'hidden';
-  });
-}
-
-function resetSheets() {
-  document.querySelectorAll('.sheet').forEach((sheet) => {
-    sheet.style.zoom = '';
-    sheet.style.height = '';
-    sheet.style.maxHeight = '';
-    sheet.style.overflow = '';
-    sheet.style.display = '';
-    sheet.style.width = '';
-    sheet.style.maxWidth = '';
-    sheet.style.margin = '';
-    sheet.style.padding = '';
-    sheet.style.boxSizing = '';
-  });
+function fitSheet(sheet, measureHidden) {
+  const body = sheet?.querySelector('.sheet-body');
+  if (!body) return;
+  if (measureHidden) sheet.classList.add('sheet-measure');
+  body.style.setProperty('--sheet-fit', '1');
+  const style = getComputedStyle(sheet);
+  const room = sheet.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  const scale = Math.min(1, (room - 1) / Math.max(body.scrollHeight, 1));
+  body.style.setProperty('--sheet-fit', String(Math.max(0.45, scale)));
+  if (measureHidden) sheet.classList.remove('sheet-measure');
 }
 
 export default function Viewer({ lang, pages, index, setIndex, onBack, onPrint, onLanguage }) {
   const theme = useTheme();
   const wide = useMediaQuery(theme.breakpoints.up('md'));
   const scroller = useRef(null);
+  const frame = useRef(null);
+  const sheet = useRef(null);
+  const [fit, setFit] = useState({ scale: 1, height: 0 });
 
   useEffect(() => {
     scroller.current?.scrollTo(0, 0);
   }, [index, lang]);
 
+  useLayoutEffect(() => {
+    fitSheet(sheet.current, false);
+  }, [index, lang, pages]);
+
   useEffect(() => {
-    const before = () => fitSheets();
-    const after = () => resetSheets();
-    window.addEventListener('beforeprint', before);
-    window.addEventListener('afterprint', after);
-    return () => {
-      window.removeEventListener('beforeprint', before);
-      window.removeEventListener('afterprint', after);
+    const beforePrint = () => {
+      frame.current?.querySelectorAll('.sheet').forEach((node) => fitSheet(node, true));
     };
-  }, [pages]);
+    window.addEventListener('beforeprint', beforePrint);
+    return () => window.removeEventListener('beforeprint', beforePrint);
+  }, [pages, lang]);
+
+  useLayoutEffect(() => {
+    const frameEl = frame.current;
+    const sheetEl = sheet.current;
+    if (!frameEl || !sheetEl) return undefined;
+    const measure = () => {
+      if (!sheetEl.offsetWidth || !frameEl.clientWidth) return;
+      const scale = frameEl.clientWidth / sheetEl.offsetWidth;
+      const height = sheetEl.offsetHeight * scale;
+      setFit({ scale, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frameEl);
+    return () => observer.disconnect();
+  }, [index, lang, pages]);
 
   return (
     <Box className="viewer">
-      <AppBar position="static" color="primary" className="no-print" elevation={1}>
-        <Toolbar sx={{ gap: 1 }}>
+      <AppBar position="static" color="primary" className="no-print preview-header" elevation={1}>
+        <Toolbar sx={{ gap: 1, px: { xs: 1, sm: 2 } }}>
           <IconButton color="inherit" edge="start" onClick={onBack} aria-label={t(lang, 'back')}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h6" sx={{ flexGrow: 1 }} noWrap>{t(lang, 'app')}</Typography>
+          <Typography variant="h6" sx={{ flexGrow: 1, minWidth: 0 }} noWrap>{t(lang, 'app')}</Typography>
           <LanguageToggle lang={lang} onChange={onLanguage} />
           <Button color="inherit" startIcon={<PrintIcon />} onClick={onPrint}>{t(lang, 'print')}</Button>
         </Toolbar>
@@ -135,16 +125,24 @@ export default function Viewer({ lang, pages, index, setIndex, onBack, onPrint, 
             <IconButton onClick={() => setIndex((n) => Math.min(pages.length - 1, n + 1))} disabled={index === pages.length - 1} aria-label="Next page"><ChevronRightIcon /></IconButton>
           </Box>
           <div className="viewer-scroll" ref={scroller}>
-            <div id="kundli-pages">
+            <div className="sheet-frame" id="kundli-pages" ref={frame}>
               {pages.map((item, i) => (
-                <article key={`${item.title}-${i}`} className={i === index ? 'sheet active' : 'sheet'}>
-                  <header className="sheet-head">
-                    <span>{t(lang, 'app')}</span>
-                    <span>{i + 1} / {pages.length}</span>
-                  </header>
-                  <h1>{item.title}</h1>
-                  {item.body}
-                </article>
+                <div key={`${item.title}-${i}`} className="sheet-slot" style={i === index ? { height: fit.height || undefined } : undefined}>
+                  <article
+                    ref={i === index ? sheet : undefined}
+                    className={i === index ? 'sheet active' : 'sheet'}
+                    style={i === index ? { transform: `scale(${fit.scale})` } : undefined}
+                  >
+                    <div className="sheet-body">
+                      <header className="sheet-head">
+                        <span>{t(lang, 'app')}</span>
+                        <span>{i + 1} / {pages.length}</span>
+                      </header>
+                      <h1>{item.title}</h1>
+                      {item.body}
+                    </div>
+                  </article>
+                </div>
               ))}
             </div>
           </div>

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Alert, Box, CircularProgress, Container, CssBaseline, ThemeProvider } from '@mui/material';
-import { PLACES } from './data/catalog.js';
 import { buildKundli } from './engine/build.js';
 import { t } from './i18n.js';
 import BirthForm from './components/BirthForm.jsx';
@@ -19,12 +18,14 @@ const initial = {
   second: 0,
   ampm: 'PM',
   zoneId: 'ist',
-  placeId: 'bhopal',
+  zoneOffsetMinutes: 330,
+  placeId: 'sagar',
+  placeName: 'Sagar, Madhya Pradesh, India',
   latDeg: 23,
-  latMin: 16,
+  latMin: 50,
   latDir: 'N',
-  lonDeg: 77,
-  lonMin: 25,
+  lonDeg: 78,
+  lonMin: 44,
   lonDir: 'E',
   correctionSign: '+',
   correctionHours: 0,
@@ -55,10 +56,9 @@ export default function App() {
   const pages = useMemo(() => (chart ? buildPages(chart) : []), [chart]);
 
   function calculate() {
-    const place = PLACES.find((item) => item.id === form.placeId);
     const prepared = {
       ...form,
-      placeName: place && place.id !== 'custom' ? (lang === 'hi' ? place.hi : place.en) : (lang === 'hi' ? 'निर्दिष्ट स्थान' : 'Specified place'),
+      placeName: form.placeName.trim() || (lang === 'hi' ? 'निर्दिष्ट स्थान' : 'Specified place'),
       name: form.name.trim(),
     };
     if (!prepared.name) throw new Error(lang === 'hi' ? 'नाम लिखें।' : 'Enter a name.');
@@ -90,11 +90,7 @@ export default function App() {
     setForm((prev) => ({ ...prev, language }));
     setChart((prev) => {
       if (!prev) return prev;
-      const place = PLACES.find((item) => item.id === prev.form.placeId);
-      const placeName = place && place.id !== 'custom'
-        ? (language === 'hi' ? place.hi : place.en)
-        : (language === 'hi' ? 'निर्दिष्ट स्थान' : 'Specified place');
-      return { ...prev, form: { ...prev.form, language, placeName } };
+      return { ...prev, form: { ...prev.form, language } };
     });
   }
 

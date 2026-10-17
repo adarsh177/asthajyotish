@@ -169,11 +169,20 @@ export function buildPages(chart) {
   return pages;
 }
 
+function formatOffset(minutes) {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(Math.round(minutes));
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+  return `UTC${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
 function Title({ chart }) {
   const lang = chart.form.language;
   const hi = lang === 'hi';
   const f = chart.form;
-  const zone = ZONES.find((z) => z.id === f.zoneId);
+  const zone = ZONES.find((z) => z.id === f.zoneId && z.offset === f.zoneOffset);
+  const zoneLabel = zone ? zone.label : formatOffset(f.zoneOffset);
   const ayan = AYANAMSAS.find((a) => a.id === f.ayanamsa);
   const av = chart.avkahada;
   const rows = [
@@ -182,7 +191,7 @@ function Title({ chart }) {
     [hi ? 'जन्म' : 'Birth', fmtWhen(chart.utc, f.zoneOffset, lang)],
     [hi ? 'स्थान' : 'Place', f.placeName],
     [hi ? 'अक्षांश / देशान्तर' : 'Latitude / longitude', `${Math.abs(chart.latitude).toFixed(2)}° ${chart.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(chart.longitude).toFixed(2)}° ${chart.longitude >= 0 ? 'E' : 'W'}`],
-    [hi ? 'समय क्षेत्र' : 'Time zone', zone ? zone.label : ''],
+    [hi ? 'समय क्षेत्र' : 'Time zone', zoneLabel],
     [hi ? 'अयनांश' : 'Ayanamsa', `${hi ? ayan.hi : ayan.en} (${chart.ayanamsa.toFixed(4)}°)`],
     [hi ? 'राहु' : 'Rahu', f.node === 'mean' ? (hi ? 'मध्यम' : 'Mean') : hi ? 'स्पष्ट' : 'True'],
     [hi ? 'पिता' : 'Father', f.father || '—'],

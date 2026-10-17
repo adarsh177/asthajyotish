@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
-  Autocomplete,
   Box,
   Button,
   Card,
@@ -21,90 +20,52 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PrintIcon from '@mui/icons-material/Print';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { AYANAMSAS, PLACES, ZONES } from '../data/catalog.js';
+import { DesktopDatePicker } from '@mui/x-date-pickers/DesktopDatePicker';
+import { DesktopTimePicker } from '@mui/x-date-pickers/DesktopTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
+import { AYANAMSAS, ZONES } from '../data/catalog.js';
 import { t } from '../i18n.js';
 import LanguageToggle from './LanguageToggle.jsx';
+import PlaceSearch from './PlaceSearch.jsx';
 
-function pad(value) {
-  return String(value).padStart(2, '0');
-}
-
-function formatDate(year, month, day) {
-  if (!year || !month || !day) return '';
-  return `${pad(day)}-${pad(month)}-${String(year).padStart(4, '0')}`;
-}
-
-function parseDate(text) {
-  const match = String(text).trim().match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || year < 1) return null;
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  if (day > last) return null;
-  return { year, month, day };
+function dateValue(year, month, day) {
+  return year && month && day ? dayjs(new Date(year, month - 1, day)) : null;
 }
 
 function timeValue(hour, minute, second, ampm) {
   let h = Number(hour) % 12;
   if (ampm === 'PM') h += 12;
-  return `${pad(h)}:${pad(minute)}:${pad(second || 0)}`;
+  return dayjs().hour(h).minute(Number(minute) || 0).second(Number(second) || 0);
 }
 
-function placeLabel(item, lang) {
-  const city = lang === 'hi' ? item.hi : item.en;
-  const country = lang === 'hi' ? item.countryHi : item.country;
-  return country ? `${country} → ${city}` : city;
+const pickerSlots = { openPickerButton: { type: 'button' } };
+
+function formatOffset(minutes) {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(Math.round(minutes));
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+  return `UTC${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
-function split(value) {
-  const abs = Math.abs(value);
-  let deg = Math.floor(abs);
-  let min = Math.round((abs - deg) * 60);
-  if (min === 60) {
-    min = 0;
-    deg += 1;
+function zoneChoices(form) {
+  const rows = ZONES.map((zone) => [zone.id, zone.label]);
+  if (!ZONES.some((zone) => zone.id === form.zoneId) && Number.isFinite(form.zoneOffsetMinutes)) {
+    rows.unshift([form.zoneId, formatOffset(form.zoneOffsetMinutes)]);
   }
-  return { deg, min };
+  return rows;
 }
 
 export default function BirthForm({ form, setForm, onPreview, onPrint, onLanguage }) {
   const lang = form.language === 'hi' ? 'hi' : 'en';
   const [adjust, setAdjust] = useState(false);
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
-  const place = PLACES.find((item) => item.id === form.placeId) || PLACES[PLACES.length - 1];
   const ayanLabel = AYANAMSAS.find((item) => item.id === form.ayanamsa);
 
-  const onPlace = (placeId) => {
-    const next = PLACES.find((item) => item.id === placeId);
-    if (!next || next.lat == null) {
-      set({ placeId });
-      return;
-    }
-    const lat = split(next.lat);
-    const lon = split(next.lon);
-    set({
-      placeId,
-      zoneId: next.zone || form.zoneId,
-      latDeg: lat.deg,
-      latMin: lat.min,
-      latDir: next.lat >= 0 ? 'N' : 'S',
-      lonDeg: lon.deg,
-      lonMin: lon.min,
-      lonDir: next.lon >= 0 ? 'E' : 'W',
-    });
-  };
-
-  const onTime = (value) => {
-    const [h, minute, second] = value.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(minute)) return;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    set({ hour, minute, second: second || 0, ampm });
-  };
-
   return (
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
     <Stack spacing={2.5} component="form" onSubmit={(event) => { event.preventDefault(); onPreview(); }}>
       <Box className="hero">
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
@@ -128,52 +89,37 @@ export default function BirthForm({ form, setForm, onPreview, onPrint, onLanguag
               <SelectField label={t(lang, 'sex')} value={form.sex} onChange={(sex) => set({ sex })} options={[['Male', t(lang, 'male')], ['Female', t(lang, 'female')]]} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <DateField
-                required
+              <DesktopDatePicker
                 label={t(lang, 'birthDate')}
-                year={form.year}
-                month={form.month}
-                day={form.day}
-                onCommit={({ year, month, day }) => set({ year, month, day })}
+                format="DD-MM-YYYY"
+                value={dateValue(form.year, form.month, form.day)}
+                onChange={(next) => {
+                  if (next?.isValid()) set({ year: next.year(), month: next.month() + 1, day: next.date() });
+                }}
+                slotProps={{ ...pickerSlots, textField: { fullWidth: true, required: true } }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                required
-                type="time"
+              <DesktopTimePicker
                 label={t(lang, 'birthTime')}
+                format="hh:mm:ss A"
+                views={['hours', 'minutes', 'seconds']}
                 value={timeValue(form.hour, form.minute, form.second, form.ampm)}
-                onChange={(e) => onTime(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true }, htmlInput: { step: 1 } }}
+                onChange={(next) => {
+                  if (!next?.isValid()) return;
+                  const hour24 = next.hour();
+                  set({ hour: hour24 % 12 || 12, minute: next.minute(), second: next.second(), ampm: hour24 >= 12 ? 'PM' : 'AM' });
+                }}
+                slotProps={{ ...pickerSlots, textField: { fullWidth: true, required: true } }}
               />
             </Grid>
             <Grid size={12}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <Autocomplete
-                  sx={{ flex: 1 }}
-                  options={PLACES}
-                  value={place}
-                  onChange={(_, next) => { if (next) onPlace(next.id); }}
-                  getOptionLabel={(item) => placeLabel(item, lang)}
-                  isOptionEqualToValue={(a, b) => a.id === b.id}
-                  filterOptions={(options, state) => {
-                    const query = state.inputValue.trim().toLowerCase();
-                    if (!query) return options;
-                    return options.filter((item) => (
-                      item.en.toLowerCase().includes(query)
-                      || item.country.toLowerCase().includes(query)
-                      || item.hi.includes(state.inputValue.trim())
-                      || item.countryHi.includes(state.inputValue.trim())
-                    ));
-                  }}
-                  renderOption={(props, item) => {
-                    const { key, ...rest } = props;
-                    return <li key={key} {...rest}>{placeLabel(item, lang)}</li>;
-                  }}
-                  renderInput={(params) => <TextField {...params} label={t(lang, 'place')} />}
-                />
-                <Button type="button" variant="text" onClick={() => setAdjust((open) => !open)} sx={{ flexShrink: 0 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <PlaceSearch form={form} lang={lang} onPlace={set} />
+                </Box>
+                {/* Temporarily hidden. Place search fills the coordinates and time zone. */}
+                <Button type="button" variant="text" onClick={() => setAdjust((open) => !open)} sx={{ flexShrink: 0, mt: 1, display: 'none' }}>
                   {adjust ? t(lang, 'hideAdjust') : t(lang, 'showAdjust')}
                 </Button>
               </Stack>
@@ -181,7 +127,15 @@ export default function BirthForm({ form, setForm, onPreview, onPrint, onLanguag
                 <Box sx={{ pt: 2 }}>
                   <Grid container spacing={2}>
                     <Grid size={12}>
-                      <SelectField label={t(lang, 'zone')} value={form.zoneId} onChange={(zoneId) => set({ zoneId })} options={ZONES.map((z) => [z.id, z.label])} />
+                      <SelectField
+                        label={t(lang, 'zone')}
+                        value={form.zoneId}
+                        onChange={(zoneId) => {
+                          const next = ZONES.find((item) => item.id === zoneId);
+                          set({ zoneId, zoneOffsetMinutes: next ? next.offset : form.zoneOffsetMinutes });
+                        }}
+                        options={zoneChoices(form)}
+                      />
                     </Grid>
                     <Grid size={12}>
                       <Typography variant="body2" color="text.secondary" gutterBottom>{t(lang, 'correction')}</Typography>
@@ -245,12 +199,14 @@ export default function BirthForm({ form, setForm, onPreview, onPrint, onLanguag
             <Grid size={{ xs: 12, md: 6 }}><SelectField label={t(lang, 'node')} value={form.node} onChange={(node) => set({ node })} options={[['true', t(lang, 'trueNode')], ['mean', t(lang, 'meanNode')]]} /></Grid>
             <Grid size={{ xs: 12, md: 6 }}><SelectField label={t(lang, 'language')} value={form.language} onChange={(language) => set({ language })} options={[['hi', 'हिन्दी'], ['en', 'English']]} /></Grid>
             <Grid size={{ xs: 12, md: 6 }}>
-              <DateField
+              <DesktopDatePicker
                 label={`${t(lang, 'yogini')} · ${t(lang, 'yoginiFrom')}`}
-                year={form.yoginiYear}
-                month={form.yoginiMonth}
-                day={form.yoginiDay}
-                onCommit={({ year, month, day }) => set({ yoginiYear: year, yoginiMonth: month, yoginiDay: day })}
+                format="DD-MM-YYYY"
+                value={dateValue(form.yoginiYear, form.yoginiMonth, form.yoginiDay)}
+                onChange={(next) => {
+                  if (next?.isValid()) set({ yoginiYear: next.year(), yoginiMonth: next.month() + 1, yoginiDay: next.date() });
+                }}
+                slotProps={{ ...pickerSlots, textField: { fullWidth: true } }}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
@@ -269,42 +225,7 @@ export default function BirthForm({ form, setForm, onPreview, onPrint, onLanguag
         <Button type="button" variant="outlined" size="large" startIcon={<PrintIcon />} onClick={onPrint}>{t(lang, 'print')}</Button>
       </Stack>
     </Stack>
-  );
-}
-
-function DateField({ label, year, month, day, onCommit, required }) {
-  const committed = formatDate(year, month, day);
-  const [text, setText] = useState(committed);
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (!focused) setText(committed);
-  }, [committed, focused]);
-
-  const commit = (value) => {
-    const parsed = parseDate(value);
-    if (parsed) onCommit(parsed);
-    return parsed;
-  };
-
-  return (
-    <TextField
-      fullWidth
-      required={required}
-      label={label}
-      placeholder="DD-MM-YYYY"
-      value={text}
-      onFocus={() => setFocused(true)}
-      onChange={(event) => {
-        setText(event.target.value);
-        commit(event.target.value);
-      }}
-      onBlur={(event) => {
-        setFocused(false);
-        if (!commit(event.target.value)) setText(committed);
-      }}
-      slotProps={{ inputLabel: { shrink: true }, htmlInput: { inputMode: 'numeric', autoComplete: 'bday' } }}
-    />
+    </LocalizationProvider>
   );
 }
 

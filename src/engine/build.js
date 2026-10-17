@@ -38,7 +38,7 @@ const GRAHAS = PLANETS.map((p) => p.id);
 
 export function buildKundli(form) {
   const zone = ZONES.find((z) => z.id === form.zoneId);
-  form = { ...form, zoneOffset: zone ? zone.offset : 330 };
+  form = { ...form, zoneOffset: Number.isFinite(form.zoneOffsetMinutes) ? form.zoneOffsetMinutes : (zone ? zone.offset : 330) };
   const utc = birthUtc(form);
   const { lat, lon } = coordsFromForm(form);
   const ayan = ayanamsaOf(form.ayanamsa, utc);
